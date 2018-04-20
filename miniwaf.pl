@@ -37,23 +37,29 @@ sub judge {
     ($log || '') =~ /client: (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/ or return;
     my $ip = $1;
     return if $map_of_ips->{$ip};
+    my $found = 0;
     for my $il (@$illegals) {
         if ($log =~ /$il/i) {
+            $found = 1;
             append_deny($ip);
             &$callback($ip) if $callback;
         }
     }
+    $found;
 }
 
 #precheck error.log
+my $new_in_precheck = 0;
 for my $err_filename (NGINX_ERROR_LOG, NGINX_ERROR_LOG.".1") {
     if (open my $fp2, "<".$err_filename) {
         while (<$fp2>) {
-            judge($_);
+            $new_in_precheck = 1 if judge($_);
         }
         close $fp2;
     }
 }
+
+system NGINX_RELOAD if $new_in_precheck;
 
 #listen error.log
 my $file = File::Tail->new(
