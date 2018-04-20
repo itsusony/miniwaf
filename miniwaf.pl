@@ -6,6 +6,8 @@ use File::Tail;
 use constant {
     NGINX_ERROR_LOG => '/usr/local/nginx/logs/error.log',
     NGINX_DENY_CONF => '/usr/local/nginx/conf/deny.conf',
+    NGINX_RELOAD => '/usr/local/nginx/sbin/nginx -s reload',
+    ILLEGALS => [qw/phpmyadmin wp-login\.php CoordinatorPortType/],
 };
 
 unless (-r NGINX_DENY_CONF) {
@@ -14,30 +16,54 @@ unless (-r NGINX_DENY_CONF) {
     close $ndc_fp;
 }
 
+my $illegals = ILLEGALS;
+
 # preload denied ips into hashref
 my $map_of_ips = {};
 open my $fp, '< '.NGINX_DENY_CONF;
-#my @arr = <$fp>;
 map { if (/^deny (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3});/) { $map_of_ips->{$1}=1; }; } <$fp>;
 close $fp;
 
+sub append_deny {
+    my $_ip = shift or return;
+    $map_of_ips->{$_ip} = 1;
+    open my $_fp, '>> ' . NGINX_DENY_CONF;
+    print $_fp sprintf 'deny %s;'."\n", $_ip;
+    close $_fp;
+}
+
+sub judge {
+    my ($log, $callback) = @_;
+    ($log || '') =~ /client: (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/ or return;
+    my $ip = $1;
+    return if $map_of_ips->{$ip};
+    for my $il (@$illegals) {
+        if ($log =~ /$il/i) {
+            append_deny($ip);
+            &$callback($ip) if $callback;
+        }
+    }
+}
+
+#precheck error.log
+for my $err_filename (NGINX_ERROR_LOG, NGINX_ERROR_LOG.".1") {
+    if (open my $fp2, "<".$err_filename) {
+        while (<$fp2>) {
+            judge($_);
+        }
+        close $fp2;
+    }
+}
+
+#listen error.log
 my $file = File::Tail->new(
   name        => NGINX_ERROR_LOG,
   interval    => 1,
   maxinterval => 5,
 );
 
-my $realtime_ips = {};
-while (my $line=$file->read) {
-    if (($line =~ /phpmyadmin/i || $line =~ /Primary script unknown/i) && $line =~ /client: (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/) {
-        my $ip = $1;
-        next if ($map_of_ips->{$ip});
-        unless ($realtime_ips->{$ip}) {
-            $realtime_ips->{$ip} = 1;
-            open my $fp2, '>> ' . NGINX_DENY_CONF;
-            print $fp2 sprintf 'deny %s;'."\n", $ip;
-            close $fp2;
-            `/usr/local/nginx/sbin/nginx -s reload`;
-        }
-    }
+while (my $log = $file->read) {
+    judge($log, sub {
+        system NGINX_RELOAD;
+    });
 }
