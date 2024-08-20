@@ -7,7 +7,7 @@ use constant {
     NGINX_ERROR_LOG => '/usr/local/nginx/logs/error.log',
     NGINX_DENY_CONF => '/usr/local/nginx/conf/deny.conf',
     NGINX_RELOAD => '/usr/local/nginx/sbin/nginx -s reload',
-    ILLEGALS => [qw/phpmyadmin wp-login\.php CoordinatorPortType azenv\.php/],
+    ILLEGALS => [qw/phpmyadmin wp-login\.php CoordinatorPortType azenv\.php \.vscode \.env \.git/],
 };
 
 unless (-r NGINX_DENY_CONF) {
