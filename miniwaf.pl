@@ -10,7 +10,7 @@ my $NGINX_ERROR_LOG = $ENV{NGINX_ERROR_LOG} || '/var/log/nginx/error.log';
 my $NGINX_DENY_CONF = $ENV{NGINX_DENY_CONF} || '/etc/nginx/conf.d/deny.conf';
 my $NGINX_RELOAD = $ENV{NGINX_RELOAD} || 'nginx -s reload';
 my $UFW_ADD_RULE = $ENV{UFW_ADD_RULE} || 'ufw deny from %s to any';
-my @ILLEGALS = qw/phpmyadmin wp-login\.php CoordinatorPortType azenv\.php \.vscode \.git \.env/;
+my @ILLEGALS = qw/phpmyadmin wp-login\.php CoordinatorPortType azenv\.php \.vscode \.git \.env phpinfo/;
 
 my $opt = $ARGV[0] // '';
 my $dry_run = $opt eq 'dry_run' ? 1 : 0;
