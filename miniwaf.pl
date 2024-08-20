@@ -1,4 +1,4 @@
-#! /usr/bin/env perl
+#!/usr/bin/env perl
 use strict;
 use warnings;
 use File::Tail;
@@ -7,37 +7,42 @@ use constant {
     NGINX_ERROR_LOG => '/usr/local/nginx/logs/error.log',
     NGINX_DENY_CONF => '/usr/local/nginx/conf/deny.conf',
     NGINX_RELOAD => '/usr/local/nginx/sbin/nginx -s reload',
-    ILLEGALS => [qw/phpmyadmin wp-login\.php CoordinatorPortType azenv\.php \.vscode \.env \.git/],
+    UFW_ADD_RULE => '/usr/sbin/ufw deny from %s to any',
+    ILLEGALS => [qw/phpmyadmin wp-login\.php CoordinatorPortType azenv\.php/],
 };
 
 unless (-r NGINX_DENY_CONF) {
-    open my $ndc_fp, '>'.NGINX_DENY_CONF;
+    open my $ndc_fp, '>', NGINX_DENY_CONF;
     print $ndc_fp "# miniwaf\n";
     close $ndc_fp;
 }
 
 my $opt = $ARGV[0] // '';
 my $dry_run = $opt eq 'dry_run' ? 1 : 0;
-
 print "start dry_run\n" if $dry_run;
 
 my $illegals = ILLEGALS;
 
 # preload denied ips into hashref
 my $map_of_ips = {};
-open my $fp, '< '.NGINX_DENY_CONF;
-map { if (/^deny (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3});/) { $map_of_ips->{$1}=1; }; } <$fp>;
+open my $fp, '<', NGINX_DENY_CONF;
+map { if (/^deny (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3});/) { $map_of_ips->{$1}=1; } } <$fp>;
 close $fp;
 
 sub append_deny {
     my $_ip = shift or return;
     $map_of_ips->{$_ip} = 1;
     unless ($dry_run) {
-        open my $_fp, '>> ' . NGINX_DENY_CONF;
-        print $_fp sprintf 'deny %s;'."\n", $_ip;
+        # Add Nginx deny rule
+        open my $_fp, '>>', NGINX_DENY_CONF;
+        print $_fp sprintf "deny %s;\n", $_ip;
         close $_fp;
+
+        # Add UFW rule
+        my $ufw_command = sprintf UFW_ADD_RULE, $_ip;
+        system($ufw_command);
     } else {
-        print $_ip."\n";
+        print "Would block IP: $_ip\n";
     }
 }
 
@@ -62,7 +67,7 @@ sub judge {
 print "scan error.log ... \n" if $dry_run;
 my $new_in_precheck = 0;
 for my $err_filename (NGINX_ERROR_LOG, NGINX_ERROR_LOG.".1") {
-    if (open my $fp2, "<".$err_filename) {
+    if (open my $fp2, "<", $err_filename) {
         while (<$fp2>) {
             $new_in_precheck = 1 if judge($_);
         }
@@ -70,8 +75,7 @@ for my $err_filename (NGINX_ERROR_LOG, NGINX_ERROR_LOG.".1") {
     }
 }
 print "finished\n" if $dry_run;
-
-system NGINX_RELOAD if $new_in_precheck && !$dry_run;
+system(NGINX_RELOAD) if $new_in_precheck && !$dry_run;
 
 #listen error.log
 my $file = File::Tail->new(
@@ -87,6 +91,6 @@ if ($dry_run) {
 
 while (my $log = $file->read) {
     judge($log, sub {
-        system NGINX_RELOAD;
+        system(NGINX_RELOAD);
     });
 }
