@@ -13,9 +13,11 @@ NGINX_ERROR_LOG = os.environ.get('NGINX_ERROR_LOG', '/var/log/nginx/error.log')
 NGINX_ACCESS_LOG = os.environ.get('NGINX_ACCESS_LOG', '/var/log/nginx/access.log')
 UFW_ADD_RULE = os.environ.get('UFW_ADD_RULE', 'ufw deny from %s to any')
 ILLEGALS = ['phpmyadmin', 'wp-login.php', 'CoordinatorPortType', 'azenv.php', '.vscode', '.git', '.env', 'phpinfo', '/cdn-cgi/', '/cgi-bin/', 'paloaltonetworks.com']
+WHITELIST_FILE = os.environ.get('WHITELIST_FILE', '/etc/nginx/whitelist.txt')
 
 # Global variables
 blocked_ips: Set[str] = set()
+whitelisted_ips: Set[str] = set()
 
 async def load_blocked_ips():
     global blocked_ips
@@ -30,8 +32,22 @@ async def load_blocked_ips():
     except Exception as e:
         print(f"Error loading blocked IPs: {e}")
 
+async def load_whitelisted_ips():
+    global whitelisted_ips
+    try:
+        async with aiofiles.open(WHITELIST_FILE, mode='r') as f:
+            content = await f.read()
+            whitelisted_ips = set(ip.strip() for ip in content.split('\n') if ip.strip())
+    except FileNotFoundError:
+        print(f"Whitelist file not found: {WHITELIST_FILE}")
+    except Exception as e:
+        print(f"Error loading whitelisted IPs: {e}")
+
 async def block_ip(ip: str, dry_run: bool):
     global blocked_ips
+    if ip in whitelisted_ips:
+        print(f"IP {ip} is whitelisted, not blocking")
+        return False
     if ip and ip not in blocked_ips:
         if not dry_run:
             proc = await asyncio.create_subprocess_shell(
@@ -52,6 +68,8 @@ async def process_log_entry(log_entry: str, is_error_log: bool, dry_run: bool):
     ip_match = re.search(ip_pattern, log_entry)
     if ip_match:
         ip = ip_match.group(1)
+        if ip in whitelisted_ips:
+            return False
         if any(illegal.lower() in log_entry.lower() for illegal in ILLEGALS):
             if dry_run:
                 log_type = "error" if is_error_log else "access"
@@ -85,14 +103,14 @@ async def process_all_logs(dry_run: bool):
 
     for log_file in error_logs:
         await process_log_file(log_file, True, dry_run)
-    
+
     for log_file in access_logs:
         await process_log_file(log_file, False, dry_run)
 
 async def monitor_logs(error_log: str, access_log: str, dry_run: bool):
     async with aiofiles.open(error_log, 'r') as error_file, \
                aiofiles.open(access_log, 'r') as access_file:
-        
+
         # ファイルの末尾に移動
         await error_file.seek(0, 2)
         await access_file.seek(0, 2)
@@ -115,6 +133,7 @@ async def main():
         print("Starting in dry run mode")
 
     await load_blocked_ips()
+    await load_whitelisted_ips()
 
     # 全ての既存ログファイルを処理
     await process_all_logs(dry_run)
