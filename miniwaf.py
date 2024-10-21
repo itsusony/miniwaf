@@ -12,7 +12,7 @@ from glob import glob
 NGINX_ERROR_LOG = os.environ.get('NGINX_ERROR_LOG', '/var/log/nginx/error.log')
 NGINX_ACCESS_LOG = os.environ.get('NGINX_ACCESS_LOG', '/var/log/nginx/access.log')
 UFW_ADD_RULE = os.environ.get('UFW_ADD_RULE', 'ufw deny from %s to any')
-ILLEGALS = ['phpmyadmin', 'wp-login.php', 'CoordinatorPortType', 'azenv.php', '.vscode', '.git', '.env', 'phpinfo', '/cdn-cgi/', '/cgi-bin/', 'paloaltonetworks.com']
+ILLEGALS = ['phpmyadmin', 'wp-login.php', 'CoordinatorPortType', 'azenv.php', '.vscode', '.git', '.env', 'phpinfo', '/cdn-cgi/', '/cgi-bin/', 'paloaltonetworks.com', '/wp-config.php']
 WHITELIST_FILE = os.environ.get('WHITELIST_FILE', '/etc/nginx/whitelist.txt')
 
 # Global variables
