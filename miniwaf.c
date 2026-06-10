@@ -235,7 +235,7 @@ static void config_init(config_t *cfg, int argc, char **argv) {
     cfg->dry_run = (argc > 1 && strcmp(argv[1], "dry_run") == 0);
 
     const char *th = getenv("THRESHOLD_HITS");
-    cfg->threshold_hits = th ? atoi(th) : 3;
+    cfg->threshold_hits = th ? atoi(th) : 1;
     if (cfg->threshold_hits < 1) cfg->threshold_hits = 1;
 
     const char *tw = getenv("THRESHOLD_WINDOW");
