@@ -2,15 +2,7 @@
 
 A lightweight, real-time Web Application Firewall (WAF) for nginx. It monitors nginx logs, detects malicious requests, and automatically blocks attacker IPs using **UFW**.
 
-## Versions
-
-| File | Language | Notes |
-|------|----------|-------|
-| `miniwaf.pl` | Perl | Original version. Uses `File::Tail` and writes `deny` rules to an nginx include file. |
-| `miniwaf.py` | Python | Asyncio-based. Monitors both error and access logs via UFW. |
-| `miniwaf.c` | **C** | **New high-performance version** (this project). Single binary, minimal dependencies, cross-platform polling, threshold-based blocking, gzip support, and graceful signal handling. |
-
-## Features (C version)
+## Features
 
 - **Dual log monitoring**: Watches both `error_log` and `access_log` in real time.
 - **Historical log processing**: Scans existing log files (including rotated `.gz` archives) on startup.
@@ -132,19 +124,6 @@ sudo systemctl enable --now miniwaf
 3. **Thresholding**: Increments a per-IP hit counter. When the counter reaches `THRESHOLD_HITS` within `THRESHOLD_WINDOW`, the IP is passed to the blocker.
 4. **Blocking**: Executes the `UFW_ADD_RULE` command (e.g. `ufw deny from <ip> to any`).
 5. **Monitoring**: Enters a polling loop, checking monitored log files every 500ms. Automatically handles log rotation by detecting inode changes.
-
-## Differences from Perl/Python versions
-
-| Feature | Perl | Python | C |
-|---------|------|--------|---|
-| Real-time method | `File::Tail` | `aiofiles` polling | `stat()` polling |
-| Logrotate handling | Partial | No | Yes |
-| Access log support | No | Yes | Yes |
-| Gzip history | No | Yes | Yes |
-| Threshold blocking | No | No | Yes |
-| Whitelist | No | Yes | Yes |
-| Graceful shutdown | No | No | Yes |
-| Dependencies | Perl + File::Tail + Try::Tiny | Python + aiofiles | libc + zlib |
 
 ## License
 
