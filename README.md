@@ -7,7 +7,7 @@ A lightweight, real-time Web Application Firewall (WAF) for nginx. It monitors n
 - **Dual log monitoring**: Watches both `error_log` and `access_log` in real time.
 - **Historical log processing**: Scans existing log files (including rotated `.gz` archives) on startup.
 - **Logrotate-aware**: Detects file rotation via `stat()` polling; no inotify/kqueue required.
-- **Threshold-based blocking**: Blocks an IP only after N hits within a configurable time window (default: 3 hits / 60s).
+- **Threshold-based blocking**: Blocks an IP only after N hits within a configurable time window (default: 1 hit / 60s).
 - **Whitelist support**: IPs listed in a whitelist file are never blocked.
 - **IPv4 & IPv6 support**: IP extraction and validation via `inet_pton`.
 - **Graceful shutdown**: Handles `SIGINT` and `SIGTERM` cleanly.
@@ -48,7 +48,16 @@ If you are running this in an automated deployment, use `-y` to auto-accept:
 sudo python3 init_ufw.py -y
 ```
 
-### 3. Test with dry run
+### 3. Install logrotate config (recommended)
+
+Copy the included logrotate config so `/var/log/miniwaf.log` is rotated daily and miniwaf receives `SIGHUP` to reopen its logs:
+
+```bash
+sudo cp logrotate/miniwaf /etc/logrotate.d/
+sudo chmod 644 /etc/logrotate.d/miniwaf
+```
+
+### 4. Test with dry run
 
 Always test first to see what would be blocked, without touching your firewall:
 
@@ -68,19 +77,17 @@ Processing historical log: /var/log/nginx/access.log
 Dry run finished
 ```
 
-### 4. Run for real
+### 5. Run for real
 
 ```bash
 sudo ./miniwaf
 ```
 
-Example output with threshold=3:
+Example output with the default threshold of 1:
 
 ```
 Processing historical log: /var/log/nginx/error.log
-IP 192.168.1.10 hit 1/3 (reason: phpmyadmin)
-IP 192.168.1.10 hit 2/3 (reason: .env)
-Blocking IP 192.168.1.10 (reason: .git, hits: 3/3)
+Blocking IP 192.168.1.10 (reason: .git, hits: 1/1)
 Blocking IP: 192.168.1.10
 Starting log monitoring (2 file(s))...
 ```
@@ -96,11 +103,13 @@ All settings are controlled via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NGINX_ERROR_LOG` | `/var/log/nginx/error.log` | Path to nginx error log |
-| `NGINX_ACCESS_LOG` | `/var/log/nginx/access.log` | Path to nginx access log |
+| `NGINX_ACCESS_LOG` | `/var/log/nginx/access.log` | Path to access log |
 | `UFW_ADD_RULE` | `ufw deny from %s to any` | Command template to block an IP. `%s` is replaced with the IP. |
 | `WHITELIST_FILE` | `/etc/nginx/whitelist.txt` | One IP per line. Empty lines and `# comments` are ignored. |
-| `THRESHOLD_HITS` | `3` | Number of hits required before blocking |
+| `THRESHOLD_HITS` | `1` | Number of hits required before blocking |
 | `THRESHOLD_WINDOW` | `60` | Time window (seconds) for counting hits |
+
+> **Note**: Earlier versions of this README incorrectly stated that the default for `THRESHOLD_HITS` was `3`. The actual default has always been `1` (block on first hit). Set `THRESHOLD_HITS=3` explicitly if you want the old documented behavior.
 
 ### Example with custom settings
 
@@ -115,9 +124,11 @@ sudo ./miniwaf
 
 ### Strict mode (block on first hit)
 
+This is the default behavior. You only need to set these if you want to be explicit:
+
 ```bash
 export THRESHOLD_HITS=1
-export THRESHOLD_WINDOW=1
+export THRESHOLD_WINDOW=60
 sudo ./miniwaf
 ```
 
@@ -182,9 +193,11 @@ Type=simple
 Environment="NGINX_ERROR_LOG=/var/log/nginx/error.log"
 Environment="NGINX_ACCESS_LOG=/var/log/nginx/access.log"
 Environment="WHITELIST_FILE=/etc/nginx/whitelist.txt"
-Environment="THRESHOLD_HITS=3"
+Environment="THRESHOLD_HITS=1"
 Environment="THRESHOLD_WINDOW=60"
 ExecStart=/usr/local/bin/miniwaf
+StandardOutput=append:/var/log/miniwaf.log
+StandardError=append:/var/log/miniwaf.log
 Restart=always
 RestartSec=5
 
@@ -196,6 +209,8 @@ Install and start:
 
 ```bash
 sudo cp miniwaf /usr/local/bin/
+sudo touch /var/log/miniwaf.log
+sudo chmod 644 /var/log/miniwaf.log
 sudo systemctl daemon-reload
 sudo systemctl enable --now miniwaf
 ```
@@ -204,8 +219,40 @@ Check status and logs:
 
 ```bash
 sudo systemctl status miniwaf
-sudo journalctl -u miniwaf -f
+sudo tail -f /var/log/miniwaf.log
 ```
+
+> **Note**: This service writes its own log file directly. If you prefer `journalctl`, remove the `StandardOutput`/`StandardError` lines and install the `logrotate/miniwaf` config anyway to avoid unbounded log growth in the journal.
+
+## Logrotate Support
+
+miniwaf responds to `SIGHUP` by reopening `/var/log/miniwaf.log`. This lets logrotate rotate the log without losing output.
+
+Install the provided config:
+
+```bash
+sudo cp logrotate/miniwaf /etc/logrotate.d/
+sudo chmod 644 /etc/logrotate.d/miniwaf
+```
+
+The config rotates logs daily, keeps 14 days, and sends `SIGHUP` to miniwaf after rotation.
+
+To test the rotation without waiting for the cron job:
+
+```bash
+sudo logrotate -f /etc/logrotate.d/miniwaf
+```
+
+You should see `[miniwaf] Logs reopened on SIGHUP` in the new log file.
+
+## Project Layout
+
+| File | Purpose |
+|------|---------|
+| `miniwaf.c` | Main WAF implementation |
+| `Makefile` | Build rules |
+| `init_ufw.py` | First-time UFW setup helper |
+| `logrotate/miniwaf` | logrotate config for miniwaf's own logs |
 
 ## How It Works
 
@@ -213,7 +260,8 @@ sudo journalctl -u miniwaf -f
 2. **Matching**: Extracts the client IP from each log line and checks against a list of known attack patterns.
 3. **Thresholding**: Increments a per-IP hit counter. When the counter reaches `THRESHOLD_HITS` within `THRESHOLD_WINDOW`, the IP is passed to the blocker.
 4. **Blocking**: Executes the `UFW_ADD_RULE` command (e.g. `ufw deny from <ip> to any`).
-5. **Monitoring**: Enters a polling loop, checking monitored log files every 500ms. Automatically handles log rotation by detecting inode changes.
+5. **Monitoring**: Enters a polling loop, checking monitored log files every 500ms. Automatically handles nginx log rotation by detecting inode changes.
+6. **Log reopening**: Responds to `SIGHUP` by reopening `/var/log/miniwaf.log`, so logrotate can rotate miniwaf's own logs safely.
 
 ## Troubleshooting
 
@@ -232,7 +280,13 @@ The IP may already be blocked, or you are not running as root. UFW requires root
 - Check that the log line actually contains one of the blocked patterns (case-insensitive substring match).
 
 ### Logrotate not detected
-The program detects rotation by comparing `inode` and file size via `stat()`. If your log rotation uses `copytruncate` (which keeps the same inode), detection may be delayed until the file shrinks. This is rare for nginx.
+The program detects nginx log rotation by comparing `inode` and file size via `stat()`. If your log rotation uses `copytruncate` (which keeps the same inode), detection may be delayed until the file shrinks. This is rare for nginx.
+
+### miniwaf's own log is not being written after rotation
+Make sure you installed the `logrotate/miniwaf` config and that miniwaf is running. After rotation, logrotate sends `SIGHUP`; miniwaf will reopen `/var/log/miniwaf.log` and print `Logs reopened on SIGHUP`.
+
+### systemd logs go to journalctl instead of /var/log/miniwaf.log
+The example service file in this README writes logs directly to `/var/log/miniwaf.log` via `StandardOutput=append:`. If you are using an older service file without those lines, logs go to the systemd journal. Either update the service file or use `sudo journalctl -u miniwaf -f`.
 
 ## License
 
