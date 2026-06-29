@@ -269,6 +269,9 @@ static void config_init(config_t *cfg, int argc, char **argv) {
         "phpmyadmin", "wp-login.php", "CoordinatorPortType",
         "azenv.php", ".vscode", ".git", ".env", "phpinfo",
         "/cdn-cgi/", "/cgi-bin/", "paloaltonetworks.com", "/wp-config.php",
+        "/wp-admin/", "/xmlrpc.php", "/wp-json/", "adminer",
+        "/vendor/", "phpunit", "/.aws/", "/.ssh/", "config.json",
+        "/server-status", "/config.php",
         NULL
     };
     int n = 0;

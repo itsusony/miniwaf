@@ -169,15 +169,28 @@ The following substrings in a log line trigger a hit:
 - `phpmyadmin`
 - `wp-login.php`
 - `/wp-config.php`
+- `/wp-admin/`
+- `/xmlrpc.php`
+- `/wp-json/`
+- `adminer`
+- `/vendor/`
+- `phpunit`
 - `CoordinatorPortType`
 - `azenv.php`
 - `.vscode`
 - `.git`
 - `.env`
 - `phpinfo`
+- `/.aws/`
+- `/.ssh/`
+- `config.json`
+- `/config.php`
+- `/server-status`
 - `/cdn-cgi/`
 - `/cgi-bin/`
 - `paloaltonetworks.com`
+
+> Substring matching is case-insensitive. A single request matching any of these patterns counts as a hit.
 
 ## Systemd Service
 
