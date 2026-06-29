@@ -639,6 +639,9 @@ static void monitor_tick(monitor_t *mon, const config_t *cfg, ip_set_t *set) {
  * ============================================================ */
 
 int main(int argc, char **argv) {
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
+
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     signal(SIGHUP, signal_handler);
