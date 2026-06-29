@@ -235,7 +235,7 @@ sudo systemctl status miniwaf
 sudo tail -f /var/log/miniwaf.log
 ```
 
-> **Note**: This service writes its own log file directly. If you prefer `journalctl`, remove the `StandardOutput`/`StandardError` lines and install the `logrotate/miniwaf` config anyway to avoid unbounded log growth in the journal.
+> **Note**: This service writes its own log file directly. `StandardOutput=append:` works with systemd 245+ and miniwaf runs with unbuffered stdout/stderr so log lines appear immediately. If you prefer `journalctl`, remove the `StandardOutput`/`StandardError` lines and install the `logrotate/miniwaf` config anyway to avoid unbounded log growth in the journal.
 
 ## Logrotate Support
 
@@ -275,6 +275,7 @@ You should see `[miniwaf] Logs reopened on SIGHUP` in the new log file.
 4. **Blocking**: Executes the `UFW_ADD_RULE` command (e.g. `ufw deny from <ip> to any`).
 5. **Monitoring**: Enters a polling loop, checking monitored log files every 500ms. Automatically handles nginx log rotation by detecting inode changes.
 6. **Log reopening**: Responds to `SIGHUP` by reopening `/var/log/miniwaf.log`, so logrotate can rotate miniwaf's own logs safely.
+7. **Unbuffered output**: Runs with unbuffered stdout/stderr so log lines are written immediately, even when managed by systemd.
 
 ## Troubleshooting
 
