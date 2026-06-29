@@ -20,6 +20,8 @@
 #include <limits.h>
 #include <strings.h>
 #include <zlib.h>
+#include <signal.h>
+#include <fcntl.h>
 
 /* ============================================================
  * Configuration
@@ -193,10 +195,31 @@ static void ip_set_grow(ip_set_t *set) {
  * ============================================================ */
 
 static volatile sig_atomic_t running = 1;
+static volatile sig_atomic_t reopen_logs = 0;
 
 static void signal_handler(int sig) {
-    (void)sig;
+    if (sig == SIGHUP) {
+        reopen_logs = 1;
+        return;
+    }
     running = 0;
+}
+
+static void reopen_stdout_stderr(void) {
+    const char *log_path = "/var/log/miniwaf.log";
+    int fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) {
+        fprintf(stderr, "Cannot reopen %s: %s\n", log_path, strerror(errno));
+        return;
+    }
+    if (dup2(fd, STDOUT_FILENO) < 0 || dup2(fd, STDERR_FILENO) < 0) {
+        fprintf(stderr, "Failed to redirect stdout/stderr: %s\n", strerror(errno));
+        close(fd);
+        return;
+    }
+    close(fd);
+    printf("[miniwaf] Logs reopened on SIGHUP\n");
+    fflush(stdout);
 }
 
 static char *strcasestr_custom(const char *haystack, const char *needle) {
@@ -615,6 +638,7 @@ static void monitor_tick(monitor_t *mon, const config_t *cfg, ip_set_t *set) {
 int main(int argc, char **argv) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+    signal(SIGHUP, signal_handler);
     signal(SIGPIPE, SIG_IGN);
 
     config_t cfg;
@@ -661,6 +685,10 @@ int main(int argc, char **argv) {
     printf("Starting log monitoring (%d file(s))...\n", mon_count);
     while (running) {
         poll(NULL, 0, 500);
+        if (reopen_logs) {
+            reopen_logs = 0;
+            reopen_stdout_stderr();
+        }
         for (int i = 0; i < mon_count; i++)
             monitor_tick(&monitors[i], &cfg, &set);
     }

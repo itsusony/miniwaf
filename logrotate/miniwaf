@@ -1,0 +1,14 @@
+/var/log/miniwaf.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 root root
+    postrotate
+        if pgrep -x miniwaf > /dev/null 2>&1; then
+            pkill -HUP -x miniwaf
+        fi
+    endscript
+}
